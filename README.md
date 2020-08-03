@@ -20,6 +20,7 @@ To run this script, you will need [PyTorch](http://pytorch.org) and a CUDA-capab
 To run with default parameters, simply call
 
 ```sh
+pip install path.py
 python train.py
 ```
 

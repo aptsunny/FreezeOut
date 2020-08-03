@@ -18,7 +18,7 @@ import sys
 import math
 import numpy as np
 
-from utils import scale_fn,calc_speedup
+from utils import scale_fn, calc_speedup
 
 class Bottleneck(nn.Module):
     def __init__(self, nChannels, growthRate,layer_index):
@@ -81,8 +81,8 @@ class Transition(nn.Module):
     def __init__(self, nChannels, nOutChannels, layer_index):
         super(Transition, self).__init__()
         self.bn1 = nn.BatchNorm2d(nChannels)
-        self.conv1 = nn.Conv2d(nChannels, nOutChannels, kernel_size=1,
-                               bias=False)
+        self.conv1 = nn.Conv2d(nChannels, nOutChannels, kernel_size=1, bias=False)
+
 
         # If the layer is being trained or not
         self.active = True
@@ -104,7 +104,7 @@ class Transition(nn.Module):
         if self.active:
             return out
         else:
-            return out.detach()
+            return out.detach() # prevent backprop.
 
 
 class DenseNet(nn.Module):
@@ -112,36 +112,36 @@ class DenseNet(nn.Module):
         super(DenseNet, self).__init__()
         
         self.epochs = epochs
-        self.t_0 = t_0
-        self.scale_lr = scale_lr
-        self.how_scale = how_scale
-        self.const_time = const_time
+        self.t_0 = t_0 # 0.8
+        self.scale_lr = scale_lr # True
+        self.how_scale = how_scale # 'cubic'
+        self.const_time = const_time # False
         
-        nDenseBlocks = (depth-4) // 3
+        nDenseBlocks = (depth-4) // 3 # (76-4)//3=24
         if bottleneck:
-            nDenseBlocks //= 2
+            nDenseBlocks //= 2 # 12
             
         # Calculate the speedup
-        speedup = calc_speedup(growthRate,nDenseBlocks,t_0,how_scale)
+        speedup = calc_speedup(growthRate, nDenseBlocks, t_0, how_scale) #和提速相关的参数
         print('Estimated speedup is '+str((np.round(100*speedup)))+'%.')
         
         # Optionally scale the epochs based on the speedup so we train for
-        # the same approximate wall-clock time.
+        # the same approximate wall-clock time. # 为保持相同的训练时间，加速的时间在epoch上补上，看会不会产生更好的结果
         if self.const_time:
             self.epochs /= 1-speedup    
         
         
-        nChannels = 2*growthRate
-        self.conv1 = nn.Conv2d(3, nChannels, kernel_size=3, padding=1,
-                               bias=False)
+        nChannels = 2*growthRate # 2*12=24
+        self.conv1 = nn.Conv2d(3, nChannels, kernel_size=3, padding=1, bias=False)
+
         self.conv1.layer_index = 0
         self.conv1.active=True
         self.layer_index = 1
         
         self.dense1 = self._make_dense(nChannels, growthRate, nDenseBlocks, bottleneck)
-        nChannels += nDenseBlocks*growthRate
-        nOutChannels = int(math.floor(nChannels*reduction))
-        self.trans1 = Transition(nChannels, nOutChannels,self.layer_index)
+        nChannels += nDenseBlocks*growthRate # 24 + 12*12= 168
+        nOutChannels = int(math.floor(nChannels*reduction)) #84
+        self.trans1 = Transition(nChannels, nOutChannels,self.layer_index) # 内部 self.dense.active=True
         self.layer_index += 1
 
         nChannels = nOutChannels
@@ -164,21 +164,19 @@ class DenseNet(nn.Module):
         self.fc.active=True
         self.bn1.layer_index = self.layer_index
         self.fc.layer_index = self.layer_index
-        
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels # 9*24=216
+                m.weight.data.normal_(0, math.sqrt(2. / n)) # variance = 2/(ks*ks*output_c)
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
             elif isinstance(m, nn.Linear):
                 m.bias.data.zero_()
-            
 
             # Set the layerwise scaling and annealing parameters
-            if hasattr(m,'active'):
+            if hasattr(m,'active'): # 假如active lr_ratio = (0.8 + 0.2 * [0/1/2/3/4 -> 39 ]/39 )^3
                 m.lr_ratio = scale_fn[self.how_scale](self.t_0 + (1 - self.t_0) * float(m.layer_index) / self.layer_index)
                 m.max_j = self.epochs * 1000 * m.lr_ratio
                 
@@ -187,8 +185,10 @@ class DenseNet(nn.Module):
                 m.lr = 1e-1 / m.lr_ratio if self.scale_lr else 1e-1
                 
         # Optimizer
-        self.optim = optim.SGD([{'params':m.parameters(), 'lr':m.lr, 'layer_index':m.layer_index} for m in self.modules() if hasattr(m,'active')],  
-                         nesterov=True,momentum=0.9, weight_decay=1e-4)
+        self.optim = optim.SGD([{'params':m.parameters(),
+                                 'lr':m.lr,
+                                 'layer_index':m.layer_index} for m in self.modules() if hasattr(m,'active')],
+                                nesterov=True, momentum=0.9, weight_decay=1e-4)
         # Iteration Counter            
         self.j = 0  
 
@@ -227,7 +227,7 @@ class DenseNet(nn.Module):
                 # If not, update the LR
                 else:
                     for i,group in enumerate(self.optim.param_groups):
-                        if group['layer_index']==m.layer_index:
+                        if group['layer_index']==m.layer_index: # 0.05/ 0.512
                             self.optim.param_groups[i]['lr'] = (0.05/m.lr_ratio)*(1+np.cos(np.pi*self.j/m.max_j))\
                                                               if self.scale_lr else 0.05 * (1+np.cos(np.pi*self.j/m.max_j))
         

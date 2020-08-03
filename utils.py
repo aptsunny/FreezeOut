@@ -24,12 +24,12 @@ scale_fn = {'linear':lambda x: x,
                          'squared': lambda x: x**2,
                          'cubic': lambda x: x**3}
                          
-def calc_speedup(growthRate,nDenseBlocks,t_0,how_scale):
+def calc_speedup(growthRate, nDenseBlocks, t_0, how_scale):
     # Height*Width at each stage
     HW = [32**2, 16**2, 8**2]
 
     # FLOPs of first layer
-    c = [3* (2*growthRate)*HW[0]*9]
+    c = [3* (2*growthRate)*HW[0]*9] # Cinput* Coutput* H*W * 3*3(ks)
     # num channels
     n = 2
     for i in range(3):

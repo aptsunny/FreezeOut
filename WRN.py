@@ -9,6 +9,7 @@ import torch.optim as optim
 
 import numpy as np
 from utils import scale_fn
+
 class BasicBlock(nn.Module):
     def __init__(self, in_planes, out_planes, stride, dropRate,layer_index):
         super(BasicBlock, self).__init__()

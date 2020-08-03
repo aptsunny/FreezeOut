@@ -36,6 +36,32 @@ from utils import get_data_loader, MetricsLogger, progress
 # Set the recursion limit to avoid problems with deep nets
 sys.setrecursionlimit(5000)
 
+def fast_hpo_lr_parameters(model, lr_group=[], arch_search=None):
+    rest_name = []
+    figure_ = []
+    for name, param in model.named_parameters():
+        rest_name.append(param)
+        figure_.append(name)
+
+    figure_choice=[]
+    choice = []
+
+    if len(rest_name) == 23:
+        loc = 0
+        # 15
+        split_list = [1, 3, 3, 3, 3, 3, 3, 3, 1]
+        for i in range(0, len(split_list), 1):
+            st = loc
+            en = loc + split_list[i]
+            # print(loc, loc + split_list[i])
+            b = figure_[st:en]
+            a = rest_name[st:en]
+            loc = en
+            figure_choice.append(b)
+            choice.append(a)
+
+    groups = [dict(params=choice[x], lr=lr_group[x]) for x in range(len(choice))]
+    return groups
 
 def opts_parser():
     usage = 'Trains and tests a FreezeOut DenseNet on CIFAR.'
@@ -92,7 +118,7 @@ def opts_parser():
         '--which_dataset', type=int, default=100,
         help='Which Dataset to train on (default: %(default)s)')
     parser.add_argument(
-        '--batch_size', type=int, default=128,#
+        '--batch_size', type=int, default=50, # 128
         help='Images per batch (default: %(default)s)')
     parser.add_argument(
         '--resume', type=bool, default=False,
@@ -110,7 +136,7 @@ def train_test(depth, growth_rate, dropout, augment,
                validate, epochs, save_weights, batch_size, 
                t_0, seed, scale_lr, how_scale, which_dataset, 
                const_time, resume, model):
-    
+
     # Update save_weights:
     if save_weights=='default_save':
         save_weights = (model + '_k' + str(growth_rate) + 'L' + str(depth)
@@ -160,7 +186,9 @@ def train_test(depth, growth_rate, dropout, augment,
                                     const_time = const_time)
         net = net.cuda()
         start_epoch = 0
-    
+
+    # a = fast_hpo_lr_parameters(net)
+
 
 
     logging.info('Number of params: {}'.format(
@@ -202,7 +230,7 @@ def train_test(depth, growth_rate, dropout, augment,
 
         # Pin the current epoch on the network.
         net.epoch = epoch
-
+        # ！！！！！！
         # shrink learning rate at scheduled intervals, if desired
         if 'epoch' in net.lr_sched and epoch in net.lr_sched['epoch']:
 
@@ -231,7 +259,7 @@ def train_test(depth, growth_rate, dropout, augment,
         
             # Update LR if using cosine annealing
             if 'itr' in net.lr_sched:
-                net.update_lr()
+                net.update_lr() # batch=50 update=1000
                 
             train_loss.append(train_fn(x, y))
 
