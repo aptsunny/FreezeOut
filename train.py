@@ -27,7 +27,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable as V
+# from torch.autograd import Variable as V
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
@@ -42,7 +42,7 @@ def opts_parser():
     parser = ArgumentParser(description=usage)
     parser.add_argument(
         '-L', '--depth', type=int, default=76,
-        help='Network depth in layers (default: %(default)s)')
+        help='Network depth in layers (default: %(default)s)') # DenseNet 76
     parser.add_argument(
         '-k', '--growth-rate', type=int, default=12,
         help='Growth rate in dense blocks (default: %(default)s)')
@@ -56,7 +56,8 @@ def opts_parser():
         '--no-augment', action='store_false', dest='augment',
         help='Disable data augmentation')
     parser.add_argument(
-        '--validate', action='store_true', default=True,
+        # '--validate', action='store_true', default=True,
+        '--validate', type=str, default='test',
         help='Perform validation on validation set (ensabled by default)')
     parser.add_argument(
         '--no-validate', action='store_false', dest='validate',
@@ -91,7 +92,7 @@ def opts_parser():
         '--which_dataset', type=int, default=100,
         help='Which Dataset to train on (default: %(default)s)')
     parser.add_argument(
-        '--batch_size', type=int, default=50,
+        '--batch_size', type=int, default=128,#
         help='Images per batch (default: %(default)s)')
     parser.add_argument(
         '--resume', type=bool, default=False,
@@ -103,9 +104,6 @@ def opts_parser():
         '--save-weights', type=str, default='default_save', metavar='FILE',
         help='Save network weights to given .pth file')
     return parser
-
-
-
 
 
 def train_test(depth, growth_rate, dropout, augment,
@@ -138,8 +136,8 @@ def train_test(depth, growth_rate, dropout, augment,
     model_module = __import__(model)
 
     # Get information specific to each dataset
-    train_loader,test_loader = get_data_loader(which_dataset, augment,
-                                               validate, batch_size)
+    train_loader,test_loader = get_data_loader(which_dataset, augment, validate, batch_size)
+
 
     # Build network, either by initializing it or loading a pre-trained
     # network.
@@ -174,22 +172,27 @@ def train_test(depth, growth_rate, dropout, augment,
     # y: target labels
     def train_fn(x, y):
         net.optim.zero_grad()
-        output = net(V(x.cuda()))
-        loss = F.nll_loss(output, V(y.cuda()))
+        # output = net(V(x.cuda()))
+        # loss = F.nll_loss(output, V(y.cuda()))
+        output = net(x.cuda())
+        loss = F.nll_loss(output, y.cuda())
         loss.backward()
         net.optim.step()
-        return loss.data[0]
+        return loss.item()
 
     # Testing function, returns test loss and test error for a batch
     # x: input data
     # y: target labels
     def test_fn(x, y):
-        output = net(V(x.cuda(), volatile=True))
-        test_loss = F.nll_loss(output, V(y.cuda(), volatile=True)).data[0]
+        # output = net(V(x.cuda(), volatile=True))
+        # test_loss = F.nll_loss(output, V(y.cuda(), volatile=True)).item()
+        with torch.no_grad():
+            output = net(x.cuda())
+            test_loss = F.nll_loss(output, y.cuda()).item()
 
-        # Get the index of the max log-probability as the prediction.
-        pred = output.data.max(1)[1].cpu()
-        test_error = pred.ne(y).sum()
+            # Get the index of the max log-probability as the prediction.
+            pred = output.data.max(1)[1].cpu()
+            test_error = pred.ne(y).sum()
 
         return test_loss, test_error
 
@@ -243,7 +246,7 @@ def train_test(depth, growth_rate, dropout, augment,
             if hasattr(m,'active') and m.active:
                 actives += 1
         logging.info('Currently have ' + str(actives) + ' active layers...')
-        
+
         # Optionally, take a pass over the validation or test set.
         if validate:
 

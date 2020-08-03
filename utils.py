@@ -13,7 +13,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable as V
-import torchvision.datasets as dset
+# import torchvision.datasets as dset
+from torchvision.datasets import CIFAR10, CIFAR100
+
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
@@ -53,20 +55,20 @@ def calc_speedup(growthRate,nDenseBlocks,t_0,how_scale):
 
 
 def get_data_loader(which_dataset,augment=True,validate=True,batch_size=50):
-    class CIFAR10(dset.CIFAR10):
-        def __len__(self):
-            if self.train:
-                return len(self.train_data)
-            else:
-                return 10000
+    # class CIFAR10(dset.CIFAR10):
+    #     def __len__(self):
+    #         if self.train:
+    #             return len(self.train_data)
+    #         else:
+    #             return 10000
 
 
-    class CIFAR100(dset.CIFAR100):
-        def __len__(self):
-            if self.train:
-                return len(self.train_data)
-            else:
-                return 10000
+    # class CIFAR100(dset.CIFAR100):
+    #     def __len__(self):
+    #         if self.train:
+    #             return len(self.train_data)
+    #         else:
+    #             return 10000
 
     if which_dataset is 10:
         print('Loading CIFAR-10...')
@@ -99,6 +101,7 @@ def get_data_loader(which_dataset,augment=True,validate=True,batch_size=50):
         train=True,
         download=True,
         transform=train_transform if augment else test_transform)
+
     # If we're evaluating on the test set, load the test set
     if validate == 'test':
         test_set = dataset(root='cifar', train=False, download=True,
@@ -115,12 +118,12 @@ def get_data_loader(which_dataset,augment=True,validate=True,batch_size=50):
         train_set.train_labels = train_set.train_labels[:-5000]
 
     # Prepare data loaders
-    train_loader = DataLoader(train_set, batch_size=batch_size,
-                              shuffle=True, **kwargs)
-    test_loader = DataLoader(test_set, batch_size=batch_size,
-                             shuffle=False, **kwargs)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, **kwargs)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, **kwargs)
+
+
     return train_loader, test_loader
-    
+
 
 class MetricsLogger(object):
 
