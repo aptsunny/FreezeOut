@@ -21,7 +21,7 @@ import numpy as np
 from utils import scale_fn, calc_speedup
 
 class Bottleneck(nn.Module):
-    def __init__(self, nChannels, growthRate,layer_index):
+    def __init__(self, nChannels, growthRate, layer_index):
         super(Bottleneck, self).__init__()
         interChannels = 4*growthRate
         self.bn1 = nn.BatchNorm2d(nChannels)
@@ -154,7 +154,7 @@ class DenseNet(nn.Module):
         nChannels = nOutChannels
         self.dense3 = self._make_dense(nChannels, growthRate, nDenseBlocks, bottleneck)
         nChannels += nDenseBlocks*growthRate
-
+        # 1+ 12*3 +2trans(13,26) =39
         self.bn1 = nn.BatchNorm2d(nChannels)
         self.fc = nn.Linear(nChannels, nClasses)
         
@@ -178,11 +178,14 @@ class DenseNet(nn.Module):
             # Set the layerwise scaling and annealing parameters
             if hasattr(m,'active'): # 假如active lr_ratio = (0.8 + 0.2 * [0/1/2/3/4 -> 39 ]/39 )^3
                 m.lr_ratio = scale_fn[self.how_scale](self.t_0 + (1 - self.t_0) * float(m.layer_index) / self.layer_index)
-                m.max_j = self.epochs * 1000 * m.lr_ratio
-                
+                m.max_j = self.epochs * 1000 * m.lr_ratio # 50->1000, 400->125
+                # m.max_j = self.epochs * 125 * m.lr_ratio # 50->1000, 400->125
+
                 # Optionally scale the learning rates to have the same total
                 # distance traveled (modulo the gradients).
                 m.lr = 1e-1 / m.lr_ratio if self.scale_lr else 1e-1
+
+
                 
         # Optimizer
         self.optim = optim.SGD([{'params':m.parameters(),
@@ -207,7 +210,7 @@ class DenseNet(nn.Module):
             self.layer_index += 1
         return nn.Sequential(*layers)
 
-    def update_lr(self):
+    def update_lr(self, plotter, epoch, iteration):
     
         # Loop over all modules
         for m in self.modules():
@@ -230,7 +233,18 @@ class DenseNet(nn.Module):
                         if group['layer_index']==m.layer_index: # 0.05/ 0.512
                             self.optim.param_groups[i]['lr'] = (0.05/m.lr_ratio)*(1+np.cos(np.pi*self.j/m.max_j))\
                                                               if self.scale_lr else 0.05 * (1+np.cos(np.pi*self.j/m.max_j))
-        
+                            # plotter.plot('learning rate', '{} train'.format(m.layer_index), 'layer-wise learning rate', epoch, self.optim.param_groups[i]['lr'])  # visdom
+                            plotter.plot('learning rate', '{} train'.format(m.layer_index), 'layer-wise learning rate', iteration, self.optim.param_groups[i]['lr'])  # visdom
+
+            # print("{}, {:.3f}, {:.3f}, {:.3f}".format(m.layer_index, m.lr, m.lr_ratio, m.max_j))
+            # if isinstance(m, nn.Conv2d): # m.weight.shape
+            #     print("{}, {:.3f}, {}, {:.3f}, {:.3f}".format(m.layer_index, m.lr, m.weight.shape, m.lr_ratio, m.max_j))
+            # elif isinstance(m, nn.BatchNorm2d): # m.weight.shape
+            #     print("{}, {:.3f}, {}, {:.3f}, {:.3f}".format(m.layer_index, m.lr, m.weight.shape, m.lr_ratio, m.max_j))
+            # elif isinstance(m, nn.Linear): # m.bias.shape
+            #     print("{}, {:.3f}, {}, {:.3f}, {:.3f}".format(m.layer_index, m.lr, m.bias.shape, m.lr_ratio, m.max_j))
+            # print(m.lr, m.weight.shape, m.lr_ratio, m.max_j)
+
         # Update the iteration counter
         self.j += 1
     

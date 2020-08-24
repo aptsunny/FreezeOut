@@ -33,6 +33,11 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 from utils import get_data_loader, MetricsLogger, progress
+from utils import VisdomLinePlotter
+
+global plotter
+plotter = VisdomLinePlotter(env_name='FreezeOut Layer-wise Plots XX')
+
 # Set the recursion limit to avoid problems with deep nets
 sys.setrecursionlimit(5000)
 
@@ -95,7 +100,7 @@ def opts_parser():
         '--epochs', type=int, default=100,
         help='Number of training epochs (default: %(default)s)')
     parser.add_argument(
-        '--t_0', type=float, default=0.8,
+        '--t_0', type=float, default=0.5, # 0.8
         help=('How far into training to start freezing. Note that this if using'
               +' cubic scaling then this is the uncubed value.'))
     parser.add_argument(
@@ -118,7 +123,7 @@ def opts_parser():
         '--which_dataset', type=int, default=100,
         help='Which Dataset to train on (default: %(default)s)')
     parser.add_argument(
-        '--batch_size', type=int, default=50, # 128
+        '--batch_size', type=int, default=50, # 50 # 400
         help='Images per batch (default: %(default)s)')
     parser.add_argument(
         '--resume', type=bool, default=False,
@@ -226,6 +231,9 @@ def train_test(depth, growth_rate, dropout, augment,
 
     # Finally, launch the training loop.
     logging.info('Starting training at epoch '+str(start_epoch)+'...')
+
+    iteration = 0
+
     for epoch in range(start_epoch, net.epochs):
 
         # Pin the current epoch on the network.
@@ -240,7 +248,7 @@ def train_test(depth, growth_rate, dropout, augment,
             # if net.checkpoint_before_anneal:
                 # torch.save(net, str(epoch) + '_' + save_weights + '.pth')
 
-            for param_group in net.optim.param_groups:
+            for param_group in net.optim.param_groups: # step?
                 param_group['lr'] *= 0.1
 
         # List where we'll store training loss
@@ -253,26 +261,36 @@ def train_test(depth, growth_rate, dropout, augment,
 
         # Put the network into training mode
         net.train()
-    
+
+
         # Execute training pass
         for x, y in batches:
-        
+            iteration = iteration+1
             # Update LR if using cosine annealing
             if 'itr' in net.lr_sched:
-                net.update_lr() # batch=50 update=1000
+                net.update_lr(plotter, epoch, iteration)  # batch=50 update=1000
+                # net.update_lr() # batch=50 update=1000
                 
             train_loss.append(train_fn(x, y))
+
 
         # Report training metrics
         train_loss = float(np.mean(train_loss))
         print('  training loss:\t%.6f' % train_loss)
+        plotter.plot('loss', 'train', 'Class Loss', epoch, train_loss) # visdom
         mlog.log(epoch=epoch, train_loss=float(train_loss))
         
         # Check how many layers are active
         actives = 0
         for m in net.modules():
+
             if hasattr(m,'active') and m.active:
                 actives += 1
+                # plotter.plot('{} learning rate'.format(m.layer_index), '{} train'.format(m.layer_index), 'layer-wise {} learning rate'.format(m.layer_index), epoch, m.lr)  # visdom
+            # else:
+            #     plotter.plot('learning rate', 'train', 'layer-wise {} learning rate'.format(m.layer_index), epoch, 0) # visdom
+            # torch.nn.modules.module.ModuleAttributeError: 'Sequential' object has no attribute 'layer_index'
+
         logging.info('Currently have ' + str(actives) + ' active layers...')
 
         # Optionally, take a pass over the validation or test set.
@@ -303,8 +321,8 @@ def train_test(depth, growth_rate, dropout, augment,
         torch.save(net, save_weights + '.pth')
 
     # At the end of it all, save weights even if we didn't checkpoint.
-    if save_weights:
-        torch.save(net, save_weights + '.pth')
+    # if save_weights:
+    #     torch.save(net, save_weights + '.pth')
 
 
 def main():
